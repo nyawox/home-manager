@@ -631,20 +631,21 @@ in
     home.sessionVariablesPackage = pkgs.writeTextFile {
       name = "hm-session-vars.sh";
       destination = "/etc/profile.d/hm-session-vars.sh";
-      text = ''
-        # Only source this once.
-        if [ -n "$__HM_SESS_VARS_SOURCED" ]; then return; fi
-        export __HM_SESS_VARS_SOURCED=1
+      text =
+        ''
+          # Only source this once.
+          if [ -n "$__HM_SESS_VARS_SOURCED" ]; then return; fi
+          export __HM_SESS_VARS_SOURCED=1
 
-        ${config.lib.shell.exportAll cfg.sessionVariables}
-      ''
-      + lib.concatStringsSep "\n" (
-        lib.mapAttrsToList (
-          env: values: config.lib.shell.export env (config.lib.shell.prependToVar ":" env values)
-        ) cfg.sessionSearchVariables
-      )
-      + "\n"
-      + cfg.sessionVariablesExtra;
+          ${config.lib.shell.exportAll cfg.sessionVariables}
+        ''
+        + lib.concatStringsSep "\n" (
+          lib.mapAttrsToList (
+            env: values: config.lib.shell.export env (config.lib.shell.prependToVar ":" env values)
+          ) cfg.sessionSearchVariables
+        )
+        + "\n"
+        + cfg.sessionVariablesExtra;
     };
 
     home.sessionSearchVariables.PATH = lib.mkIf (cfg.sessionPath != [ ]) cfg.sessionPath;
@@ -660,7 +661,7 @@ in
       if (( $hmDriverVersion < 1 )); then
         if [[ ! -v oldGenPath || "$oldGenPath" != "$newGenPath" ]] ; then
           _i "Creating new profile generation"
-          run nix-env $VERBOSE_ARG --profile "$genProfilePath" --set "$newGenPath"
+          run nix-env $VERBOSE_ARG --profile "$genProfilePath" --set "$newGenPath" || true
         else
           _i "No change so reusing latest profile generation"
         fi
@@ -836,14 +837,14 @@ in
           ${lib.optionalString config.home.activationGenerateGcRoot ''
             # Create a temporary GC root to prevent collection during activation.
             trap 'run rm -f $VERBOSE_ARG "$newGenGcPath"' EXIT
-            run --silence nix-store --realise "$newGenPath" --add-root "$newGenGcPath"
+            run --silence nix-store --realise "$newGenPath" --add-root "$newGenGcPath" --ignore-unknown > /dev/null
           ''}
 
           ${activationCmds}
 
           ${lib.optionalString (config.home.activationGenerateGcRoot && !config.uninstall) ''
             # Create the "current generation" GC root.
-            run --silence nix-store --realise "$newGenPath" --add-root "$currentGenGcPath"
+            run --silence nix-store --realise "$newGenPath" --add-root "$currentGenGcPath" --ignore-unknown > /dev/null
 
             if [[ -e "$legacyGenGcPath" ]]; then
               run rm $VERBOSE_ARG "$legacyGenGcPath"
