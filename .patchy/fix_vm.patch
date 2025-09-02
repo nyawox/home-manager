@@ -1,0 +1,91 @@
+From eff9edda1bdaabaef41d7101c89308e65a751542 Mon Sep 17 00:00:00 2001
+From: nyawox <git@dof.pet>
+Date: Tue, 2 Sep 2025 10:51:19 +0900
+Subject: [PATCH] fix vm
+
+---
+ modules/home-environment.nix        | 33 +++++++++++++++--------------
+ modules/lib-bash/activation-init.sh |  2 +-
+ 2 files changed, 18 insertions(+), 17 deletions(-)
+
+diff --git a/modules/home-environment.nix b/modules/home-environment.nix
+index a562047b..4550374d 100644
+--- a/modules/home-environment.nix
++++ b/modules/home-environment.nix
+@@ -631,20 +631,21 @@ in
+     home.sessionVariablesPackage = pkgs.writeTextFile {
+       name = "hm-session-vars.sh";
+       destination = "/etc/profile.d/hm-session-vars.sh";
+-      text = ''
+-        # Only source this once.
+-        if [ -n "$__HM_SESS_VARS_SOURCED" ]; then return; fi
+-        export __HM_SESS_VARS_SOURCED=1
++      text =
++        ''
++          # Only source this once.
++          if [ -n "$__HM_SESS_VARS_SOURCED" ]; then return; fi
++          export __HM_SESS_VARS_SOURCED=1
+ 
+-        ${config.lib.shell.exportAll cfg.sessionVariables}
+-      ''
+-      + lib.concatStringsSep "\n" (
+-        lib.mapAttrsToList (
+-          env: values: config.lib.shell.export env (config.lib.shell.prependToVar ":" env values)
+-        ) cfg.sessionSearchVariables
+-      )
+-      + "\n"
+-      + cfg.sessionVariablesExtra;
++          ${config.lib.shell.exportAll cfg.sessionVariables}
++        ''
++        + lib.concatStringsSep "\n" (
++          lib.mapAttrsToList (
++            env: values: config.lib.shell.export env (config.lib.shell.prependToVar ":" env values)
++          ) cfg.sessionSearchVariables
++        )
++        + "\n"
++        + cfg.sessionVariablesExtra;
+     };
+ 
+     home.sessionSearchVariables.PATH = lib.mkIf (cfg.sessionPath != [ ]) cfg.sessionPath;
+@@ -660,7 +661,7 @@ in
+       if (( $hmDriverVersion < 1 )); then
+         if [[ ! -v oldGenPath || "$oldGenPath" != "$newGenPath" ]] ; then
+           _i "Creating new profile generation"
+-          run nix-env $VERBOSE_ARG --profile "$genProfilePath" --set "$newGenPath"
++          run nix-env $VERBOSE_ARG --profile "$genProfilePath" --set "$newGenPath" || true
+         else
+           _i "No change so reusing latest profile generation"
+         fi
+@@ -836,14 +837,14 @@ in
+           ${lib.optionalString config.home.activationGenerateGcRoot ''
+             # Create a temporary GC root to prevent collection during activation.
+             trap 'run rm -f $VERBOSE_ARG "$newGenGcPath"' EXIT
+-            run --silence nix-store --realise "$newGenPath" --add-root "$newGenGcPath"
++            run --silence nix-store --realise "$newGenPath" --add-root "$newGenGcPath" --ignore-unknown > /dev/null
+           ''}
+ 
+           ${activationCmds}
+ 
+           ${lib.optionalString (config.home.activationGenerateGcRoot && !config.uninstall) ''
+             # Create the "current generation" GC root.
+-            run --silence nix-store --realise "$newGenPath" --add-root "$currentGenGcPath"
++            run --silence nix-store --realise "$newGenPath" --add-root "$currentGenGcPath" --ignore-unknown > /dev/null
+ 
+             if [[ -e "$legacyGenGcPath" ]]; then
+               run rm $VERBOSE_ARG "$legacyGenGcPath"
+diff --git a/modules/lib-bash/activation-init.sh b/modules/lib-bash/activation-init.sh
+index b16d8741..7a8d8958 100755
+--- a/modules/lib-bash/activation-init.sh
++++ b/modules/lib-bash/activation-init.sh
+@@ -22,7 +22,7 @@ function migrateProfile() {
+             _i 'Migrating profile from %s to %s' "$oldProfilesDir" "$newProfilesDir"
+             for p in "$oldProfilesDir"/home-manager-*; do
+                 declare name="${p##*/}"
+-                nix-store --realise "$p" --add-root "$newProfilesDir/$name" > /dev/null
++                nix-store --realise "$p" --add-root "$newProfilesDir/$name" --ignore-unknown > /dev/null
+             done
+             cp -P "$oldProfilesDir/home-manager" "$newProfilesDir"
+         fi
+-- 
+2.49.0
+
